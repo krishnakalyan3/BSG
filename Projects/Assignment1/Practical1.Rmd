@@ -1,0 +1,164 @@
+---
+title: 'Practical 1: Descriptive analysis of genetic markers'
+author: "Krishna Kalyan"
+output: pdf_document
+---
+
+# Working with SNP dataset
+1. The file CHBChr2.rda contains genotype information (10.000 SNPs) of 45 individuals of a Chinese population of unrelated individuals. Load this data into the R environment.
+
+```{r}
+load('CHBChr2.rda')
+```
+
+2. Recode all "NN" genotypes as missing values (NA). What percentage of the data is missing?
+
+```{r echo=F}
+X[X == 'NN'] = NA
+mean(is.na(X)) * 100
+```
+
+3. For how many SNPs the genotype information is completely missing? Remove these SNPs from the database.
+
+```{r echo=F}
+X = t(X)
+missing_snp = sum(colMeans(is.na(X)) == 1)
+missing_snp
+```
+
+4. What is, on the average, the percentage of missing information per individual, after fully missing SNPs have been removed?
+
+```{r echo=F}
+X.clean = X[,colMeans(is.na(X)) != 1]
+mean(unname(unlist(rowMeans(is.na(X.clean))))) * 100
+```
+
+5. How many markers are monomorphic?
+
+```{r echo=F}
+X.table = apply(X.clean, 2, table)
+sum(lapply(X.table,length) == 1)
+```
+
+6. Write a function to compute the minor allele frequency. Make sure the function also produces sensible answers for markers that consist of missing values only, or markers that are monomorphic. Include the source code of your function here.
+
+```{r}
+maf <- function(x){
+  if(mean(is.na(x))==1){
+    return(NA)
+  }
+  alleles <- table(unlist(strsplit(as.character(unlist(unname(x))),split="")))
+  af <- alleles/sum(alleles)
+  min.maf <- min(af)
+  if(min.maf == 1){
+    return(0)
+  }else{
+    return(min.maf)
+  }
+}
+```
+
+7. Compute the minor allele frequencies for all markers, and make a histogram of it.
+
+```{r echo=F}
+maf = apply(X.clean , 2, maf) 
+hist(maf,main = 'Minor allele frequencies per SNP',xlab = 'maf',ylab = 'markers')
+```
+
+8. What percentage of the markers have a maf below 0.05? And below 0.01?
+
+```{r}
+mean(maf < 0.05) * 100
+mean(maf < 0.01) * 100
+```
+
+9. Compute for each marker its expected heterozygosity, where the expected heterozygosity for a bi-allelic markers is defined as 1 Pk i=1 p2i, where pi is the frequency of the ith allele. Compute the average expected heterozygosity over all markers. Make a histogram of the expected heterozygosity.
+
+```{r}
+heterozygosity <- function(x){
+  alleles <- table(unlist(strsplit(as.character(unlist(unname(x))),split="")))   
+  af <-  alleles/sum(alleles)
+  het <- 1- sum(af^2)
+  return(het)
+}
+heter <- apply(X.clean,2,heterozygosity)
+mean(heter)
+hist(heter , main= "Histogram of 3Expected heterozygosity", xlab = "Expected heterozygosity")
+```
+
+# Working with STR dataset
+1. The file FrenchStrs.dat contains genotype information (STRs) of individuals from a French population. The first column of the data set contains an identifier the individual. STR data starts at the second column. Load this data into the R environment.
+
+```{r}
+data = read.table("FrenchSTRs.dat")
+dim(data)
+```
+
+2. How many individuals and how many STRs contains the database?
+
+```{r echo=F}
+X <- data[,2:ncol(data)]
+n <- nrow(X)/2
+p <- ncol(X)
+paste("Individuals", n)
+paste("STRs ", p)
+```
+
+3. The value -9 indicates a missing value. Replace all missing values by NA. What percentage of the total amount of datavalues is missing?
+
+```{r echo=F}
+X[X==-9] <- NA
+mean(is.na(X)) * 100
+```
+
+4. Write a function that determines the number of alleles for a STR. Determine the number of alleles for each STR in the database. Compute basic descriptive statistics of the number of alleles (mean, standard deviation, median, minimum, maximum).
+
+```{r echo=T}
+n.alleles <- function(x) {
+  y <- length(unique(x[!is.na(x)]))
+  return(y)
+}
+alleles.str = as.data.frame(apply(X, 2, n.alleles))
+names(alleles.str) = c('alleles')
+lapply(alleles.str, mean)
+# sd
+lapply(alleles.str, sd)
+# medain
+lapply(alleles.str, median)
+# max
+lapply(alleles.str, max)
+# min
+lapply(alleles.str, min)
+```
+
+5. Make a boxplot and a histogram of the number of alleles per STR. What is the most common number of alleles for an STR?
+
+```{r echo=F}
+par(mfrow=c(1,2))
+hist(alleles.str$alleles, ylab="Frequency",xlab="Number of Alleles", main="Number of alleles for STR")
+boxplot(alleles.str$alleles,ylab="Number of alleles for STR", main="Alleles Boxplot")
+```
+
+6. Compute the expected heterozygosity for each STR. Make a histogram of the expected het-erozygosity over all STRS. Compute the average expected heterozygosity over all STRs.
+
+```{r echo=T}
+heterozygosity <- function(x){
+  freq <- table(x)/sum(table(x))
+  1 - sum(freq^2)
+}
+allels.het = apply(X, 2, heterozygosity)
+mean(allels.het)
+hist(allels.het,main="Expected Heterozygosity for STRs", xlab="Expected Heterozygosity")
+```
+7. Compare the results you obtained for the SNP database with those you obtained for the STR database. What differences do you observe between these two types of genetic markers?
+
+```{r echo=T}
+par(mfrow=c(1,2))
+hist(allels.het,main="Expected Heterozygosity \nfor STRs", xlab="Expected Heterozygosity")
+hist(heter , main= "Histogram of Expected heterozygosity \nfor SNP", xlab = "Expected heterozygosity")
+```
+
+We can compare two plots above we see that expected heterozygosity for STR range between 0 and 0.9, where as for SNP the range is between 0 and 0.5.
+The frequency value for SNP tends to be larger (0-2000) than STRs(0-200).
+
+

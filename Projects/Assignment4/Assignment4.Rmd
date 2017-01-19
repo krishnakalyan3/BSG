@@ -1,0 +1,181 @@
+---
+title: "Assignment 4"
+author: "Krishna Kalyan"
+output: html_document
+---
+
+1. Myoglobin is an oxygen-binding protein found in muscle tissue. The protein is encoded by the MB gene, which resides on the long arm of chromosome 22. The file MB.rda contains genotype information of unrelated individuals for a set of SNPs in the MB gene. The file contains genotype information in object Y. Load this data into the R environment.
+
+```{r , echo = F}
+setwd('/Users/krishna/MIRI/BSG/R_BSG/Assignment4')
+load('MB.rda')
+ls()
+```
+
+2. How many individuals and how many SNPs are there in the database? What percentage of the data is missing?
+
+```{r , echo = F}
+X = Y
+paste("Number of Individuals ", dim(X)[1])
+paste("Number of SNPs ", dim(X)[2])
+paste("Percentage of missing data ", 100 * sum(is.na(Y))/length(Y))
+```
+
+3. Assuming all SNPs are bi-allelic, how many haplotypes can theoretically be found for this data set?
+
+```{r , echo = T}
+2^ncol(X)
+```
+
+4. Estimate haplotype frequencies using the haplo.stats package (set the minimum posterior probability to 0.001). How many haplotypes do you find? List the haplotypes and their estimated probabilities. Which haplotype is the most common?
+
+```{r , echo = F}
+library(haplo.stats)
+
+Geno = matrix(apply(X, MARGIN = 2, function(x) return(c(substr(x,1,1),substr(x,2,2)))),nrow(X), 2*ncol(X))
+HapEM = haplo.em(Geno,control=haplo.em.control(min.posterior=.001))
+paste("Number of Haplotypes ",length(HapEM$hap.prob))
+print("Hapltypes and their probabilities ")
+print(HapEM)
+print("Common Haplotypes")
+paste(unname(HapEM$haplotype[which.max(HapEM$hap.prob),]))
+print("Maximum Probability ")
+max(HapEM$hap.prob)
+```
+
+5. Is the haplotypic constitution of any of the individuals in the database ambiguous or uncertain? If so, for which individuals?
+
+```{r,echo = F, warning=F}
+library(knitr)
+ind = which((table(HapEM$indx.subj) > 1))
+ht = as.data.frame(cbind("Index"=HapEM$indx.subj,
+            "Hap1code"=HapEM$hap1code,
+            "Hap2code"=HapEM$hap2code))
+htind =ht[ht$Index == ind,]
+paste("Uncertain Individual ",row.names(X)[ind])
+kable(htind, format="markdown", align = 'c')
+```
+
+Indiviudal number 22 is ambigous in the database. 
+
+6. Suppose we would delete SNP rs5999890 from the database prior to haplotype estimation. Would this affect the results obtained? Justify your answer. Delete this SNP from the database and estimate again the haplotype frequencies. List the haplotypes and their estimated frequencies.
+
+```{r}
+head(X[,'rs5999890'])
+```
+
+We see that SNP rs5999890 is monomorpihic. Generally monomorphic SNPS do not provide any useful information.
+
+```{r}
+X_rem <- subset(X, select=-c(rs5999890))
+Geno_rem = matrix(apply(X_rem, MARGIN = 2, function(x) return(c(substr(x,1,1),substr(x,2,2)))),nrow(X_rem), 2*ncol(X_rem))
+HapEM_rem = haplo.em(Geno_rem,control=haplo.em.control(min.posterior=.001))
+print(HapEM_rem$hap.prob)
+HapEM_rem
+```
+
+We see same statistic with same probabilities when the monomorpic SNP is removed.
+
+7. We could consider the newly created haplotypes as the alleles of a new locus. Which is, under the assumption of Hardy-Weinberg equilibrium, the most likely genotype at this new locus? What is the probability of this genotype? Which genotype is the second most likely?
+
+```{r, echo = F}
+probs = HapEM$hap.prob
+diplo_matrix <- matrix(0, nrow=length(probs), ncol=length(probs))
+colnames(diplo_matrix) = paste(rep("H",6),1:6)
+rownames(diplo_matrix) = paste(rep("H",6),1:6)
+for(i in 1:length(probs)){ # Rows
+  for(j in 1:length(probs)){ # Columns
+    if(i==j){
+      diplo_matrix[i,j] = probs[i]^2
+    }else{
+      diplo_matrix[i,j] = 2*probs[i]*probs[j]
+    }
+  }
+}
+print(diplo_matrix)
+diplo_max = sort(diplo_matrix, decreasing = TRUE)[1:2]
+max_diplo_mat = sapply(diplo_max, function(x)
+which(diplo_matrix == x, arr.ind = T)[1:2])
+max_diplo_mat = data.frame(max_diplo_mat)
+colnames(max_diplo_mat) <- c('H 1', 'H 2')
+rownames(max_diplo_mat) <- c('D 1', 'D 2')
+max_diplo_mat['Diplo freq'] <- diplo_max
+kable(max_diplo_mat, format="markdown", align = 'c')
+```
+
+- If the combination is same Haplotypes, then the probability is equal to p(allele)^2
+- If the combination is different Haplotypes then the probability is equal to 2.p(allele1).p(allele2)
+The most probable diplotype is (Haplotype 6, Haplotype 6) with a probability of 0.527 followed by (Haplotype 6, Haplotype 5) with a probability of 0.2561.
+
+8. Simulate a set of independent markers using the HWData function of the HardyWeinberg package that mimicks the Myoglobin data in terms of sample size, number of SNPs and minor allele frequencies. Create haplotypes on the basis of the simulated data. Do you find the same number of haplotypes? Can you explain the difference?
+
+```{r, warning=F, echo=F, message=FALSE}
+library(HardyWeinberg)
+library(genetics)
+identical_letters = function(x){
+  identical(unlist(strsplit(x,split=""))[1],unlist(strsplit(x,split=""))[2])
+}
+
+prep_haplo = function(data){
+    df = matrix(apply(data, MARGIN = 2,
+               function(x) return(c(substr(x,1,1),substr(x,2,2)))),
+              nrow = nrow(data), ncol = 2*ncol(data))
+    return(df)}
+
+ #Function to get the genotypes
+get_genotype = function(x) { 
+  genotype = table(x)
+  if(length(genotype)==2){
+    if(identical_letters(names(genotype)[1]) & identical_letters(names(genotype)[2])){
+      genotype = c(genotype[1], 0, genotype[2])
+    }else if(identical_letters(names(genotype)[1]) & !identical_letters(names(genotype)[2])){
+      genotype = c(genotype[1], genotype[2],0)
+    }else{
+      genotype = c(0, genotype[1], genotype[2])
+    }
+    
+  }else if(length(genotype)==3){
+    genotype = genotype
+  }else{
+    genotype = c(0, 0, genotype[1])
+  }
+  return(unname(genotype))
+}
+
+  #Generate Genotypes
+genotypes <- apply(Y,2,get_genotype)
+genotypes <- t(genotypes)
+
+#Sample Size
+n = unname(rowSums(genotypes))
+#Allele frequency
+p = unname(apply(genotypes,1,maf))
+
+#Simulated value for each genotype
+simul <-c()
+for(i in 1:length(n)){
+  s <- HWData(1,n=n[i],p=p[i])
+  simul <- rbind(simul,s)
+}
+
+#Change Genotype count to SNPS
+format <- function(data){
+  n = names(as.data.frame(data))
+  maxlen = max(apply(data,1,sum))
+  X = apply(data,1,function(x){ c(rep(n[1],x[1]), rep(n[2],x[2]),rep(n[3],x[3])) })
+  Y= lapply(X,function(x){ c(x,rep(NA,maxlen-length(x))) })
+  Z= data.frame(lapply(Y,function(x){genotype(x,sep="")}))
+  return(Z)
+}
+df_simulated = as.data.frame(apply(format(simul),2,function(x) gsub("/", "", x)))
+
+#Haplo Format
+sim_haplo = data.frame(prep_haplo(Y))
+
+#Happlotype Frequency  
+hpsim = haplo.em(sim_haplo ,control=haplo.em.control(min.posterior=.001))
+hpsim
+```
+
+I tried using Make count package. Had issues making it work as I did not have allels in the data.
+This out is same as the Myoglobin data. We see the same statistical values.

@@ -1,0 +1,154 @@
+---
+title: "Assignment5 : Population substructure"
+author: "Krishna Kalyan"
+output: html_document
+---
+
+
+```{r, echo = F, warning=FALSE}
+rm(list = ls())
+library(MASS)
+library(knitr)
+setwd('/Users/krishna/MIRI/BSG/R_BSG/Assignment5')
+library(corrplot)
+```
+
+1. The file SNPChr22.rda contains genotype information of 49 individuals of unknown background. The genotype information concerns 136 SNPs on chromosome 22. Load this data into the R environment. The data file contains a matrix Y containing the allele counts (0,1 or 2) for 136 SNPs for one of the alleles of each SNP.  
+
+```{r}
+load('SNPChr22.rda')
+```
+
+2. Compute the Manhattan distance matrix between the 49 individuals. Include a submatrix of dimension 5 by 5 with the distances between the first 5 individuals in your report.
+
+```{r}
+md = as.matrix(dist(Y, method = "manhattan"))
+md[1:5, 1:5]
+```
+
+3. Use metric multidimensional scaling to obtain a map of the individuals, and include your map in your report. Do you think the data come from one homogeneous population?
+
+```{r, warning=F}
+n = nrow(md)
+md_out = cmdscale(md, k = n-1, eig=TRUE)
+X = md_out$points[,1:2]
+plot(X[,1], X[,2],type="p", ylab="PC1", 
+     xlab="PC2", main="Distance", asp = 1)
+abline(v=0,lty=3)
+abline(h=0,lty=3)
+```
+According to out plot we see two distinct set of popuation. In a homogeneous population all the individuals belong to the same group and are of the same type.
+
+4. Report the eigenvalues of the solution.
+```{r, warning=F}
+md_out$eig
+```
+
+5. Is the distance matrix you have used an Euclidean distance matrix?.
+
+No, the distance matrix used was Manhattan distance. 
+$$|x_{1}- x_{2}| + |y_{1} - y_{2}| $$
+This is the $L_{1}$ norm, where as the Euclidean distance is the $L_{2}$ norm. 
+
+6. What is the goodness-of-fit of a two-dimensional approximation to your distance matrix?
+
+```{r, warning=F}
+md_out$GOF[1]
+```
+
+`GOF` is the amount of variance explained by our model. This value is usually represented by out eigenvaules sorted in descending order.
+
+7. Make a plot of the estimated distances (according to your map of individuals) versus the observed distances. Regress estimated distances on observed distances and report the coefficient of determination of the regression.
+
+```{r, warning=F}
+D.fitted = as.matrix(dist(X))
+D.obs = md[lower.tri(md)]
+D.fit <- D.fitted[lower.tri(D.fitted)]
+plot(D.obs,D.fit,asp=1,xlab="Observed distance",ylab="Fitted distance")
+abline(0,1,col="red",lw=2)
+out.lm <- lm(D.fit~D.obs)
+summary(out.lm)$coef
+abline(summary(out.lm)$coef[1,1],summary(out.lm)$coef[2,1],col="green",lw=2)
+(R_sq= summary(out.lm)$adj.r.squared)
+```
+
+8. Try now non-metric multidimensional scaling with your distance matrix. Use both a random initial configuration as well as the classical metric solution as an initial solution. Make a plot of the two-dimensional solution. Do the results support that the data come from one homogeneous population?
+
+```{r, warning=F, echo=T, results='hide'}
+par(mfrow=c(1,2))
+out.nmds.1 = isoMDS(md,k=2, trace = F)
+X.nmds.1 = out.nmds.1$points
+plot(X.nmds.1[,1],X.nmds.1[,2],asp=1, ylab="PC1", 
+     xlab="PC2", 
+     main="Distance between SNPs \nwith distance matrix")
+abline(v=0,lty=3)
+abline(h=0,lty=3)
+abline(1,2, col="red")
+x.init <- scale(matrix(runif(2*nrow(Y)),ncol=2))
+out.nmds.2 <- isoMDS(md,y=x.init)
+X.nmds.2 <- out.nmds.2$points
+plot(X.nmds.2[,1],X.nmds.2[,2],asp=1, ylab="PC1", 
+     xlab="PC2", 
+     main="Distance between SNPs \nwith Random Init Config")
+abline(v=0,lty=3)
+abline(h=0,lty=3)
+abline(1,2, col="red")
+```
+
+Both the plots have 2 divided populations and divided groups.
+
+9. Make again a plot of the estimated distances (according to your map of individuals) versus the observed distances, now for the two-dimensional solution of non-metric MDS. Regress estimated distances on observed distances and report the coefficient of determination of the regression. Is the fit better or worse than with metric MDS?
+
+```{r}
+D.Fitted <- as.matrix(dist(X.nmds.1))
+D.fit2 <- D.Fitted[lower.tri(D.Fitted)]
+
+plot(D.obs,D.fit2,asp=1,xlab="Observed distance",ylab="Fitted distance")
+abline(0,1,col="red",lw=2)
+out.lm <- lm(D.fit2~D.obs)
+abline(summary(out.lm)$coef[1,1],summary(out.lm)$coef[2,1],col="green",lw=2)
+summary(out.lm)$coef
+(R_sq1= summary(out.lm)$adj.r.squared)
+```
+The fit is slightly better as the adjusted $R^{2}$ value is `0.79` which is better than `0.70`. 
+
+10. Compute the stress for a 1, 2, 3, 4, . . . , n-dimensional solution, always using the classical MDS solution as an initial configuration. How many dimensions are necessary to obtain a good representation? Make a plot of the stress against the number of dimensions.
+
+```{r}
+get_stress <- function(real.dist, est.dist){
+  diag(est.dist) <- 0
+  diag(real.dist) <- 0
+  stress <- sapply(1:length(real.dist), 
+                   function (x) (real.dist[x] - est.dist[x])^2)
+  stress <- sqrt(sum(stress)/sum((real.dist)^2))
+  return(stress)
+}
+get_nm_mds <- function(k, dist_mat){
+  out_nmds <- isoMDS(dist_mat,k=k, trace = F)
+ return(as.matrix(dist(out_nmds$points)))
+}
+
+stress <- sapply(1:26, function(x) 
+  get_stress(md, get_nm_mds(x, md)))
+plot(1:26, stress, type = 'b', main = 'Stress vs number of dimensions', 
+     ylab = 'Stress', xlab = 'Number of dimensions')
+
+which.min(stress)
+```
+Minimum stress is achieved at `11th` dimension. We can say than based on stress level of 0.1 we can choose dimensions between `6 to 11`.
+
+11. Compute the correlation matrix between the first two dimensions of a metric MDS and the two dimensional solution of a non-metric MDS. Make a scatterplot matrix of the 4 variables. Comment on your findings.
+
+```{r, warning=F}
+data_cor <- cor(cbind(X,X.nmds.1))
+colnames(data_cor) <- c('metric MDS 1', 'metric MDS 2', 
+                              'non metric MDS 1', 'non metric MDS 2')
+rownames(data_cor) <- c('metric MDS 1', 'metric MDS 2',
+                              'non metric MDS 1', 'non metric MDS 2')
+ 
+kable(data_cor, digits=3)
+pairs(cbind(X,X.nmds.1), 
+      labels = c('metric MDS 1', 'metric MDS 2', 
+          'non-metric MDS 1', 'non-metric MDS 2'))
+```
+We observe high correlation between the same dimension of each metric, and no correlation / little correlation between the same different dimensions as they are orthogonal to each other and uncorrelated.
